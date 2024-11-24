@@ -1,13 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter
+import matplotlib.pyplot as plt
 import numpy as np
 import shap
-import os
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 
 # Importar o módulo Classificador
 from Classificador import preparar_modelos
@@ -43,7 +39,7 @@ class InterfaceGrafica:
         self.criar_widgets()
 
     def criar_widgets(self):
-        
+
         # Frame para os seletores
         frame_seletores = tk.Frame(self.root)
         frame_seletores.pack(pady=10, padx=10, fill=tk.X)
@@ -91,7 +87,7 @@ class InterfaceGrafica:
         self.canvas = None
 
     def gerar_grafico(self):
-        
+
         regiao = self.combo_regiao.get()
         periodo = self.combo_periodo.get()
         classe = self.combo_classe.get()
@@ -130,10 +126,10 @@ class InterfaceGrafica:
         # Tentar encontrar o modelo correspondente
         if (contexto, classe) not in self.modelos:
             # Tentar alternativas se o modelo não existir
-            if regiao_clean and (regiao_clean, classe) in self.modelos:
-                contexto = regiao_clean
-            elif periodo_clean and (periodo_clean, classe) in self.modelos:
-                contexto = periodo_clean
+            if regiao_clean and (f'Região {regiao_clean}', classe) in self.modelos:
+                contexto = f'Região {regiao_clean}'
+            elif periodo_clean and (f'Período {periodo_clean}', classe) in self.modelos:
+                contexto = f'Período {periodo_clean}'
             elif ('Base Total', classe) in self.modelos:
                 contexto = 'Base Total'
             else:
@@ -143,64 +139,46 @@ class InterfaceGrafica:
         # Obter o modelo correspondente
         modelo_info = self.modelos.get((contexto, classe))
 
-        # Print de depuração: Verificar existência do modelo
-        print(f"Contexto para modelo: {contexto}, Classe: {classe}")
-        print(f"Modelos disponíveis: {list(self.modelos.keys())}")
-        print(f"Modelo encontrado: {'Sim' if modelo_info else 'Não'}")
-        print("-------------------------\n")
-
+        # Verificar existência do modelo
         if modelo_info is None:
             messagebox.showwarning("Aviso", f"Modelo para '{classe}' em '{contexto}' não disponível.")
             return
 
         modelo = modelo_info['modelo']
-        top_vars_info = modelo_info['top_vars']
 
-        if not top_vars_info:
-            messagebox.showwarning("Aviso", f"Não há variáveis de importância para o modelo '{classe}' em '{contexto}'.")
-            return
-
-        # Extrair top variáveis e importâncias
-        top_vars, importances_percent = zip(*top_vars_info)
-
-        # Preparar dados para o gráfico
         if tipo_grafico == 'Importância do Modelo':
-            titulo = f"Importância das Variáveis - {classe.capitalize()} - {contexto}"
-            # Já temos top_vars e importances_percent
-        else:
-            # Verificar se há dados suficientes para SHAP
-            min_samples_shap = 1  # Defina um mínimo de amostras para SHAP
-            if len(df_filtrado) < min_samples_shap:
-                messagebox.showwarning("Aviso", f"DADOS INSUFICIENTES para calcular valores SHAP para as seleções feitas.")
+            # Obter as top variáveis e importâncias
+            top_vars_info = modelo_info['top_vars']
+            if not top_vars_info:
+                messagebox.showwarning("Aviso", f"Não há variáveis de importância para o modelo '{classe}' em '{contexto}'.")
                 return
 
+            # Extrair top variáveis e importâncias
+            top_vars, importances_percent = zip(*top_vars_info)
+            # Formatar nomes das variáveis
+            top_vars_formatadas = [self.formatar_nome_variavel(var) for var in top_vars]
+            titulo = f"Importância das Variáveis - {classe.capitalize()} - {contexto}"
+            # Plotar o gráfico de importâncias
+            self.plotar_grafico_importancia(top_vars_formatadas, importances_percent, titulo)
+        else:
             # Valores SHAP
-            top_vars_shap, importances_percent_shap = self.obter_importancias_shap(modelo, df_filtrado)
-            if not top_vars_shap:
+            X_shap, shap_values, legend_labels = self.obter_valores_shap(modelo, df_filtrado)
+            if X_shap is None or shap_values is None:
                 messagebox.showwarning("Aviso", "Não foi possível gerar valores SHAP para este modelo.")
                 return
-            top_vars = top_vars_shap
-            importances_percent = importances_percent_shap
-            titulo = f"Valores SHAP Médios - {classe.capitalize()} - {contexto}"
+            titulo = f"Resumo dos Valores SHAP - {classe.capitalize()} - {contexto}"
+            # Plotar o gráfico SHAP
+            self.plotar_grafico_shap(X_shap, shap_values, legend_labels, titulo)
 
-        # Formatar nomes das variáveis
-        top_vars_formatadas = [self.formatar_nome_variavel(var) for var in top_vars]
+    def plotar_grafico_importancia(self, top_vars, importances, titulo):
 
-        # Plotar o gráfico
-        self.plotar_grafico(top_vars_formatadas, importances_percent, titulo)
-
-    def plotar_grafico(self, top_vars, importances, titulo):
-        
         # Limpar o frame do gráfico
         for widget in self.frame_grafico.winfo_children():
             widget.destroy()
 
         # Criar a figura com um tamanho adequado
-        fig = Figure(figsize=(16, 8), dpi=100)
-        gs = gridspec.GridSpec(2, 1, height_ratios=[6, 2], hspace=0.2)
-
-        # Adicionar o subplot para o gráfico
-        ax = fig.add_subplot(gs[0])
+        fig = plt.Figure(figsize=(16, 8), dpi=100)
+        ax = fig.add_subplot(111)
 
         # Inverter a ordem para que o mais importante fique no topo
         importances_reversed = importances[::-1]
@@ -215,12 +193,12 @@ class InterfaceGrafica:
         ax.set_title(titulo, fontsize=18)
         ax.set_xlabel('Importância (%)', fontsize=14)
         ax.set_yticks(indices)
-        ax.set_yticklabels([f"{i + 1}" for i in indices])  # Apenas números
+        ax.set_yticklabels([f"{i + 1}" for i in indices])
 
         ax.invert_yaxis()
 
         # Formatar o eixo x para mostrar porcentagens
-        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.1f}%'))
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f'{x:.1f}%'))
 
         # Criar legenda mapeando números às variáveis
         from matplotlib.patches import Patch
@@ -228,22 +206,23 @@ class InterfaceGrafica:
         legend_labels = [f"{i + 1}. {var}" for i, var in enumerate(top_vars_reversed)]
         legend_handles = [Patch(facecolor=colors[i], edgecolor='black') for i in range(len(colors))]
 
-        # Adicionar o subplot para a legenda
-        ax_leg = fig.add_subplot(gs[1])
-        ax_leg.axis('off')  # Ocultar o eixo da legenda
-
-        # Criar a legenda na área designada
-        ax_leg.legend(
+        # Adicionar a legenda abaixo do gráfico
+        ax.legend(
             legend_handles,
             legend_labels,
             title="Top 10 Variáveis",
             loc='upper center',
+            bbox_to_anchor=(0.5, -0.15),
             ncol=1,
             fontsize=10,
             title_fontsize=12,
             frameon=True,
-            borderaxespad=0.5
+            borderaxespad=0.0
         )
+
+        # Ajustar layout para acomodar a legenda
+        fig.tight_layout()
+        fig.subplots_adjust(bottom=0.35)
 
         # Embutir o gráfico no frame
         canvas = FigureCanvasTkAgg(fig, master=self.frame_grafico)
@@ -251,8 +230,74 @@ class InterfaceGrafica:
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.canvas = canvas
 
-    def obter_importancias_shap(self, modelo, df_contexto):
-        
+    def plotar_grafico_shap(self, X, shap_values, legend_labels, titulo):
+
+        # Limpar o frame do gráfico
+        for widget in self.frame_grafico.winfo_children():
+            widget.destroy()
+
+        # Fechar todas as figuras para evitar acúmulo
+        plt.close('all')
+
+        # Criar uma nova figura
+        plt.figure(figsize=(12, 8), dpi=100)
+
+        # Gerar o gráfico SHAP summary plot
+        try:
+            shap.summary_plot(
+                shap_values,
+                X,
+                plot_size=(12, 8),
+                show=False,
+                color='viridis'
+            )
+            plt.title(titulo, fontsize=16)
+
+            # Obter o objeto Axis atual
+            ax = plt.gca()
+
+            # Atualizar os labels do eixo Y para números
+            ax.set_yticklabels([f"{i+1}" for i in range(len(X.columns))])
+
+            # Criar legenda mapeando números às variáveis
+            from matplotlib.patches import Patch
+
+            # Criar patches brancos para a legenda
+            legend_patches = [Patch(facecolor='white', edgecolor='black')] * len(legend_labels)
+
+            # Adicionar a legenda abaixo do gráfico
+            plt.legend(
+                legend_patches,
+                legend_labels,
+                title="Top 10 Variáveis",
+                loc='upper center',
+                bbox_to_anchor=(0.5, -0.15),
+                ncol=1,
+                fontsize=10,
+                title_fontsize=12,
+                frameon=True,
+                borderaxespad=0.0
+            )
+
+            # Ajustar layout para acomodar a legenda
+            plt.tight_layout()
+            plt.subplots_adjust(bottom=0.35)
+
+            # Obter o objeto Figure atual
+            fig = plt.gcf()
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao gerar gráfico SHAP: {e}")
+            return
+
+        # Embutir o gráfico no frame
+        canvas = FigureCanvasTkAgg(fig, master=self.frame_grafico)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.canvas = canvas
+
+    def obter_valores_shap(self, modelo, df_contexto):
+
         # Preparar dados para SHAP
         try:
             X = df_contexto[colunas_relevantes]
@@ -260,14 +305,14 @@ class InterfaceGrafica:
             feature_names = modelo.get_booster().feature_names
             if feature_names is None:
                 messagebox.showerror("Erro", "O modelo não possui nomes de features.")
-                return [], []
+                return None, None, None
             X = X[feature_names]
         except KeyError as e:
             messagebox.showerror("Erro", f"Erro ao selecionar colunas para SHAP: {e}")
-            return [], []
+            return None, None, None
         except Exception as e:
             messagebox.showerror("Erro", f"Erro inesperado: {e}")
-            return [], []
+            return None, None, None
 
         # Preencher valores nulos com zero
         X = X.fillna(0)
@@ -276,32 +321,44 @@ class InterfaceGrafica:
         missing_features = [feat for feat in feature_names if feat not in X.columns]
         if missing_features:
             messagebox.showerror("Erro", f"Faltam as seguintes colunas no DataFrame para SHAP: {missing_features}")
-            return [], []
+            return None, None, None
 
         # Criar explicador e calcular valores SHAP
         try:
-            explainer = shap.Explainer(modelo, X)
-            shap_values = explainer(X)
+            explainer = shap.TreeExplainer(modelo)
+            shap_values = explainer.shap_values(X)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao calcular valores SHAP: {e}")
-            return [], []
+            return None, None, None
+
+        # Se shap_values é uma lista (multiclass), selecionar a classe positiva
+        if isinstance(shap_values, list):
+            shap_values = shap_values[1]
 
         # Calcular os valores SHAP médios absolutos
-        shap_vals_abs = np.abs(shap_values.values).mean(axis=0)
+        shap_vals_abs = np.abs(shap_values).mean(axis=0)
 
-        # Obter as variáveis ordenadas por importância
-        top_indices = np.argsort(shap_vals_abs)[::-1]
-        top_vars = [X.columns[i] for i in top_indices[:10]]
-        importances = shap_vals_abs[top_indices[:10]]
+        # Obter os índices dos top 10 features
+        top_indices = np.argsort(shap_vals_abs)[::-1][:10]
 
-        # Converter para porcentagens
-        importances_percent = (importances / importances.sum()) * 100
+        # Selecionar as top features
+        X_top = X.iloc[:, top_indices]
+        shap_values_top = shap_values[:, top_indices]
 
-        # Retornar top_vars (já é uma lista) e importances_percent convertido para lista
-        return top_vars, importances_percent.tolist()
+        # Formatar e numerar os nomes das features
+        legend_labels = []
+        for idx, col in enumerate(X_top.columns):
+            formatted_name = self.formatar_nome_variavel(col)
+            legend_label = f"{idx + 1}. {formatted_name}"
+            legend_labels.append(legend_label)
+
+        # Renomear as colunas em X_top para números de 1 a 10
+        X_top.columns = [str(idx + 1) for idx in range(len(X_top.columns))]
+
+        return X_top, shap_values_top, legend_labels
 
     def formatar_nome_variavel(self, nome_variavel):
-        
+
         # Remover o sufixo '_csat' se presente
         if nome_variavel.endswith('_csat'):
             nome_variavel = nome_variavel[:-5]
