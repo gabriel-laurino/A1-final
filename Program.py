@@ -6,8 +6,8 @@ from matplotlib.ticker import FuncFormatter
 import numpy as np
 import shap
 import os
-import matplotlib.pyplot as plt  # Import necessário para gerar cores
-import matplotlib.gridspec as gridspec  # Importar GridSpec
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 
 # Importar o módulo Classificador
 from Classificador import preparar_modelos
@@ -37,7 +37,7 @@ class InterfaceGrafica:
         self.tipos_grafico = tipos_grafico
 
         self.root.title("Análise de Importância de Variáveis")
-        self.root.geometry("1500x1000")  # Aumentado para acomodar mais seletores e gráficos
+        self.root.geometry("1500x1000")
 
         # Criar widgets
         self.criar_widgets()
@@ -196,8 +196,8 @@ class InterfaceGrafica:
             widget.destroy()
 
         # Criar a figura com um tamanho adequado
-        fig = Figure(figsize=(16, 8), dpi=100)  # Ajuste o tamanho conforme necessário
-        gs = gridspec.GridSpec(2, 1, height_ratios=[6, 2], hspace=0.2)  # 4 para gráfico, 1 para legenda
+        fig = Figure(figsize=(16, 8), dpi=100)
+        gs = gridspec.GridSpec(2, 1, height_ratios=[6, 2], hspace=0.2)
 
         # Adicionar o subplot para o gráfico
         ax = fig.add_subplot(gs[0])
@@ -238,9 +238,9 @@ class InterfaceGrafica:
             legend_labels,
             title="Top 10 Variáveis",
             loc='upper center',
-            ncol=1,  # Número de colunas na legenda para esticar horizontalmente
-            fontsize=10,               # Tamanho fixo da fonte para os labels
-            title_fontsize=12,         # Tamanho fixo da fonte para o título
+            ncol=1,
+            fontsize=10,
+            title_fontsize=12,
             frameon=True,
             borderaxespad=0.5
         )
