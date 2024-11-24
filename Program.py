@@ -369,7 +369,7 @@ class InterfaceGrafica:
         # Opcional: Abreviar termos comuns para melhorar a legibilidade
         abreviacoes = {
             "Qualidade": "Qual.",
-            "Confiabilidade": "Conf.",
+            "Confiabilidade": "Confiab.",
             "Desempenho": "Desemp.",
             "Produto": "Prod.",
             "Aparencia": "Apar.",
