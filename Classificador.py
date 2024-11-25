@@ -261,6 +261,9 @@ def preparar_modelos():
         df_bin = df.copy()
         df_bin['target_bin'] = np.where(df_bin['target'] == classe_alvo, 1, 0)
 
+        # print(f"\nVerificando target_bin para '{classe_alvo}' no contexto '{contexto}':")
+        # print(df_bin[['target', 'target_bin']].value_counts())
+
         # Selecionar X e y
         X = df_bin[valid_question_columns]
         y = df_bin['target_bin']
@@ -382,6 +385,8 @@ def preparar_modelos():
                     criar_modelo_binario(df_combination, 'detrator', contexto, modelos_dict)
                     criar_modelo_binario(df_combination, 'neutro', contexto, modelos_dict)
 
+    
+    
     # Passo 30: Funções para salvar as tabelas de volumetria e correlação
     def gerar_tabelas_volumetria(df_final):
         os.makedirs('Resultados/Volumetria', exist_ok=True)
