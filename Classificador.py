@@ -91,28 +91,27 @@ def preparar_modelos():
     # Passo 9: Verificar contagens após os filtros
     if not df_filtered.empty and 'target' in df_filtered.columns:
         print("\nContagem por categoria após os filtros:")
-        print(df_filtered['target'].value_counts())
+        counts = df_filtered['target'].value_counts()
+        total = counts.sum()
+        percentages = (counts / total) * 100
+        print(counts)
+        print(f'Total da base filtrada: {total}')
+        print(percentages.round(2))
     else:
         print("\nErro: DataFrame vazio após os filtros ou coluna 'target' não encontrada.")
 
-    # Passo 10: Mapeamento de regiões
     regioes = {
         # Região Norte
-        "AC": "norte", "AP": "norte", "AM": "norte",
-        "PA": "norte", "RO": "norte", "RR": "norte", "TO": "norte",
+        'norte' : ['AC', 'AP', 'PA', 'RO', 'RR', 'TO'],
         # Região Nordeste
-        "AL": "nordeste", "BA": "nordeste", "CE": "nordeste",
-        "MA": "nordeste", "PB": "nordeste", "PE": "nordeste",
-        "PI": "nordeste", "RN": "nordeste", "SE": "nordeste",
+        'nordeste' : ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'],
         # Região Centro-Oeste
-        "DF": "centro-oeste", "GO": "centro-oeste",
-        "MT": "centro-oeste", "MS": "centro-oeste",
+        'centro-oeste' : ['DF', 'GO', 'MT', 'MS'],
         # Região Sudeste
-        "ES": "sudeste", "MG": "sudeste",
-        "RJ": "sudeste", "SP": "sudeste",
+        'sudeste' : ['ES', 'MG', 'RJ', 'SP'],
         # Região Sul
-        "PR": "sul", "RS": "sul", "SC": "sul"
-    }
+        'sul' : ['PR', 'RS', 'SC']
+        }
 
     if 'estado' in df_filtered.columns:
         df_filtered['estado'] = df_filtered['estado'].str.upper().str.strip()
@@ -122,11 +121,52 @@ def preparar_modelos():
         print("\nAviso: A coluna 'estado' não existe no DataFrame. A coluna 'regiao' será preenchida com NaN.")
 
     # Passo 11: Extrair 'safra' a partir de 'data_resposta'
+    # Verificar se a coluna 'safra' e 'target' estão presentes
     if 'data_resposta' in df_filtered.columns:
         df_filtered['safra'] = pd.to_datetime(df_filtered['data_resposta'], errors='coerce').dt.year
     else:
         df_filtered['safra'] = np.nan
         print("\nAviso: A coluna 'data_resposta' não existe no DataFrame. A coluna 'safra' será preenchida com NaN.")
+    if not df_filtered.empty and 'safra' in df_filtered.columns and 'target' in df_filtered.columns:
+        print("\nVolumetria do target por Safra:")
+
+        # Calcular a volumetria por safra
+        volumetria_safra = (
+            df_filtered.groupby('safra')['target']
+            .value_counts()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+
+        # Calcular o total por safra
+        volumetria_safra['Total'] = volumetria_safra[categorias_target].sum(axis=1)
+
+        # Calcular as porcentagens
+        for categoria in categorias_target:
+            volumetria_safra[f"%{categoria.capitalize()}"] = (
+                volumetria_safra[categoria] / volumetria_safra['Total'] * 100
+            ).round(2)
+
+        # Adicionar uma linha de total geral
+        total_geral = volumetria_safra[categorias_target + ['Total']].sum()
+        porcentagens_gerais = (total_geral / total_geral['Total'] * 100).round(2)
+        linha_total = pd.DataFrame(
+            [[
+                'Total',
+                *total_geral[categorias_target],
+                total_geral['Total'],
+                *porcentagens_gerais[categorias_target]
+            ]],
+            columns=volumetria_safra.columns
+        )
+        volumetria_safra = pd.concat([volumetria_safra, linha_total], ignore_index=True)
+
+        # Exibir a tabela no console
+        print(volumetria_safra.to_string(index=False))
+    else:
+        print("\nErro: DataFrame vazio ou colunas 'safra' e 'target' não encontradas.")
+
+
 
     # Passo 12: Identificar as colunas de perguntas
     csat_columns = [col for col in df_filtered.columns if 'csat' in col.lower()]

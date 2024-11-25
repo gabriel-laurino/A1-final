@@ -177,7 +177,7 @@ class InterfaceGrafica:
             widget.destroy()
 
         # Criar a figura com um tamanho adequado
-        fig = plt.Figure(figsize=(16, 8), dpi=100)
+        fig = plt.Figure(figsize=(20, 10), dpi=100)
         ax = fig.add_subplot(111)
 
         # Inverter a ordem para que o mais importante fique no topo
@@ -222,7 +222,7 @@ class InterfaceGrafica:
 
         # Ajustar layout para acomodar a legenda
         fig.tight_layout()
-        fig.subplots_adjust(bottom=0.35)
+        fig.subplots_adjust(bottom=0.5)
 
         # Embutir o gráfico no frame
         canvas = FigureCanvasTkAgg(fig, master=self.frame_grafico)
