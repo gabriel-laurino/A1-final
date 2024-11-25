@@ -101,17 +101,22 @@ def preparar_modelos():
         print("\nErro: DataFrame vazio após os filtros ou coluna 'target' não encontrada.")
 
     regioes = {
-        # Região Norte
-        'norte' : ['AC', 'AP', 'PA', 'RO', 'RR', 'TO'],
-        # Região Nordeste
-        'nordeste' : ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'],
-        # Região Centro-Oeste
-        'centro-oeste' : ['DF', 'GO', 'MT', 'MS'],
-        # Região Sudeste
-        'sudeste' : ['ES', 'MG', 'RJ', 'SP'],
-        # Região Sul
-        'sul' : ['PR', 'RS', 'SC']
-        }
+    # Região Norte
+    "AC": "norte", "AP": "norte", "AM": "norte",
+    "PA": "norte", "RO": "norte", "RR": "norte", "TO": "norte",
+    # Região Nordeste
+    "AL": "nordeste", "BA": "nordeste", "CE": "nordeste",
+    "MA": "nordeste", "PB": "nordeste", "PE": "nordeste",
+    "PI": "nordeste", "RN": "nordeste", "SE": "nordeste",
+    # Região Centro-Oeste
+    "DF": "centro-oeste", "GO": "centro-oeste",
+    "MT": "centro-oeste", "MS": "centro-oeste",
+    # Região Sudeste
+    "ES": "sudeste", "MG": "sudeste",
+    "RJ": "sudeste", "SP": "sudeste",
+    # Região Sul
+    "PR": "sul", "RS": "sul", "SC": "sul"
+    }
 
     if 'estado' in df_filtered.columns:
         df_filtered['estado'] = df_filtered['estado'].str.upper().str.strip()
