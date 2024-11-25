@@ -275,9 +275,6 @@ def preparar_modelos():
         if X.empty or y.empty or len(X) < min_samples:
             return None
 
-        # NÃO preencher valores ausentes
-        # X = X.fillna(X.mean())  # Removido
-
         # Divisão em treino e teste com estratificação
         try:
             X_train, X_test, y_train, y_test = train_test_split(
