@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import shap
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from xgboost import XGBClassifier
@@ -233,10 +234,8 @@ def preparar_modelos():
         if X.empty or y.empty or len(X) < min_samples:
             return None
 
-        # Verificar se cada classe tem amostras suficientes
-        class_counts = y.value_counts()
-        if class_counts.min() < 3:
-            return None
+        # Preencher valores ausentes com a média (ou outro método adequado)
+        X = X.fillna(X.mean())
 
         # Divisão em treino e teste com estratificação
         try:
@@ -250,21 +249,52 @@ def preparar_modelos():
         modelo = XGBClassifier(eval_metric='logloss')
         modelo.fit(X_train, y_train)
 
-        # Obter as top 10 variáveis com importâncias não nulas
+        # Obter as importâncias tradicionais
         importances = modelo.feature_importances_
         indices = np.argsort(importances)[::-1]
         top_vars = [X.columns[i] for i in indices if importances[i] > 0][:10]
         top_importances = [importances[i] for i in indices if importances[i] > 0][:10]
 
-        if not top_vars:
+        # Calcular o total de importância
+        total_importance = np.sum(importances)
+
+        # Calcular importâncias percentuais
+        importances_percent = (np.array(top_importances) / total_importance) * 100
+
+        # Obter as importâncias SHAP
+        explainer = shap.TreeExplainer(modelo)
+        shap_values = explainer.shap_values(X_train)
+        if isinstance(shap_values, list):
+            shap_values = shap_values[1]  # Para a classe positiva
+
+        # Calcular as importâncias SHAP
+        shap_importances = np.abs(shap_values).mean(axis=0)
+
+        # Verificar se todas as importâncias SHAP são zero
+        if np.all(shap_importances == 0) or np.isnan(shap_importances).all():
+            print(f"\nAviso: Todas as importâncias SHAP são zero ou NaN para o modelo '{classe_alvo}' em '{contexto}'.")
             return None
 
-        importances_percent = (np.array(top_importances) / np.sum(top_importances)) * 100
+        # Prosseguir com o cálculo das importâncias
+        shap_indices = np.argsort(shap_importances)[::-1]
+        shap_top_vars = [X.columns[i] for i in shap_indices][:10]
+        shap_top_importances = [shap_importances[i] for i in shap_indices][:10]
+
+        # Calcular o total de importância SHAP
+        total_shap_importance = np.sum(shap_importances)
+
+        # Verificar se total_shap_importance é zero ou NaN
+        if total_shap_importance == 0 or np.isnan(total_shap_importance):
+            shap_importances_percent = np.zeros_like(shap_top_importances)
+        else:
+            # Calcular importâncias SHAP percentuais
+            shap_importances_percent = (np.array(shap_top_importances) / total_shap_importance) * 100
 
         # Armazenar o modelo e as top variáveis no dicionário modelos_dict
         modelos_dict[(contexto, classe_alvo)] = {
             'modelo': modelo,
-            'top_vars': list(zip(top_vars, importances_percent))
+            'top_vars': list(zip(top_vars, importances_percent)),
+            'shap_vars': list(zip(shap_top_vars, shap_importances_percent))
         }
 
         return modelo
@@ -389,12 +419,22 @@ def preparar_modelos():
         caminho_excel = 'Resultados/Top_Variaveis/Top_Variaveis_Modelos.xlsx'
         with pd.ExcelWriter(caminho_excel) as writer:
             for chave, info in modelos_dict.items():
-                if isinstance(info, dict) and 'top_vars' in info:
+                if isinstance(info, dict):
                     contexto, classe_alvo = chave
-                    top_vars = info['top_vars']
-                    df_top_vars = pd.DataFrame(top_vars, columns=['Variavel', 'Importancia (%)'])
-                    titulo = f"Top_Variaveis_{contexto}_{classe_alvo}"[:31]
-                    df_top_vars.to_excel(writer, sheet_name=titulo, index=False)
+                    
+                    # Criar DataFrame para as importâncias tradicionais, se existirem
+                    if 'top_vars' in info:
+                        top_vars = info['top_vars']
+                        df_top_vars = pd.DataFrame(top_vars, columns=['Variável', 'Importância (%)'])
+                        titulo = f"Top_{contexto}_{classe_alvo}"[:31]
+                        df_top_vars.to_excel(writer, sheet_name=titulo, index=False)
+                    
+                    # Criar DataFrame para as importâncias SHAP, se existirem
+                    if 'shap_vars' in info:
+                        shap_vars = info['shap_vars']
+                        df_shap_vars = pd.DataFrame(shap_vars, columns=['Variável', 'Importância SHAP (%)'])
+                        titulo_shap = f"SHAP_{contexto}_{classe_alvo}"[:31]
+                        df_shap_vars.to_excel(writer, sheet_name=titulo_shap, index=False)
 
     # Função para calcular a volumetria
     def calcular_volumetria(df, group_by_cols, titulo):
