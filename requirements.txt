@@ -1,6 +1,6 @@
-pandas==1.5.3
-numpy==1.21.0
-scikit-learn==1.0.2
-xgboost==1.6.1
-matplotlib==3.5.1
-shap==0.41.0
+pandas
+numpy
+scikit-learn
+xgboost
+matplotlib
+shap
