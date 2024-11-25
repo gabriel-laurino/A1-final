@@ -171,8 +171,6 @@ def preparar_modelos():
     else:
         print("\nErro: DataFrame vazio ou colunas 'safra' e 'target' não encontradas.")
 
-
-
     # Passo 12: Identificar as colunas de perguntas
     csat_columns = [col for col in df_filtered.columns if 'csat' in col.lower()]
 
@@ -250,8 +248,6 @@ def preparar_modelos():
             else:
                 return 'fraca'
 
-        correlacoes_classificadas = correlacoes_nota.apply(classificar_correlacao)
-
         # Remover colunas com correlação absoluta >= 0.99
         extreme_correlation_cols = correlacoes_nota[correlacoes_nota.abs() >= 0.99].index.tolist()
         if extreme_correlation_cols:
@@ -279,8 +275,8 @@ def preparar_modelos():
         if X.empty or y.empty or len(X) < min_samples:
             return None
 
-        # Preencher valores ausentes com a média (ou outro método adequado)
-        X = X.fillna(X.mean())
+        # NÃO preencher valores ausentes
+        # X = X.fillna(X.mean())  # Removido
 
         # Divisão em treino e teste com estratificação
         try:
@@ -291,7 +287,7 @@ def preparar_modelos():
             return None
 
         # Modelo XGBoost
-        modelo = XGBClassifier(eval_metric='logloss')
+        modelo = XGBClassifier(eval_metric='logloss', use_label_encoder=False)
         modelo.fit(X_train, y_train)
 
         # Obter as importâncias tradicionais
@@ -304,7 +300,10 @@ def preparar_modelos():
         total_importance = np.sum(importances)
 
         # Calcular importâncias percentuais
-        importances_percent = (np.array(top_importances) / total_importance) * 100
+        if total_importance == 0 or np.isnan(total_importance):
+            importances_percent = np.zeros_like(top_importances)
+        else:
+            importances_percent = (np.array(top_importances) / total_importance) * 100
 
         # Obter as importâncias SHAP
         explainer = shap.TreeExplainer(modelo)

@@ -281,7 +281,7 @@ class InterfaceGrafica:
 
             # Ajustar layout para acomodar a legenda
             plt.tight_layout()
-            plt.subplots_adjust(bottom=0.35)
+            plt.subplots_adjust(bottom=0.5)
 
             # Obter o objeto Figure atual
             fig = plt.gcf()
@@ -386,3 +386,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = InterfaceGrafica(root)
     root.mainloop()
+    
