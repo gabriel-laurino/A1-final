@@ -248,11 +248,6 @@ def preparar_modelos():
             else:
                 return 'fraca'
 
-        # Remover colunas com correlação absoluta >= 0.99
-        extreme_correlation_cols = correlacoes_nota[correlacoes_nota.abs() >= 0.99].index.tolist()
-        if extreme_correlation_cols:
-            df_final = df_final.drop(columns=extreme_correlation_cols)
-            valid_question_columns = [col for col in valid_question_columns if col not in extreme_correlation_cols]
     else:
         print("\nNenhuma coluna de pergunta válida foi selecionada para correlação.")
 
@@ -287,7 +282,7 @@ def preparar_modelos():
             return None
 
         # Modelo XGBoost
-        modelo = XGBClassifier(eval_metric='logloss', use_label_encoder=False)
+        modelo = XGBClassifier(eval_metric='logloss')
         modelo.fit(X_train, y_train)
 
         # Obter as importâncias tradicionais
