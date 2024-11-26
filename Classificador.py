@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 import shap
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import classification_report, precision_recall_curve, classification_report
 from xgboost import XGBClassifier
 import unicodedata
 import os
@@ -256,21 +256,20 @@ def preparar_modelos():
         df_bin = df.copy()
         df_bin['target_bin'] = np.where(df_bin['target'] == classe_alvo, 1, 0)
 
-        # print(f"\nVerificando target_bin para '{classe_alvo}' no contexto '{contexto}':")
-        # print(df_bin[['target', 'target_bin']].value_counts())
-
         # Selecionar X e y
         X = df_bin[valid_question_columns]
         y = df_bin['target_bin']
 
         # Remover colunas com alta proporção de NaNs
+        max_nan_ratio = 1  # Ajuste conforme necessário
         high_nan_cols = X.columns[X.isnull().mean() > max_nan_ratio]
         if len(high_nan_cols) > 0:
             X = X.drop(columns=high_nan_cols)
 
         # Verificar se X e y possuem dados suficientes
         min_samples = 10  # Número mínimo de amostras
-        if X.empty or y.empty or len(X) < min_samples:
+        if X.empty or y.empty or len(X) < min_samples or y.sum() == 0:
+            print(f"\nAviso: Dados insuficientes para o modelo '{classe_alvo}' em '{contexto}'.")
             return None
 
         # Divisão em treino e teste com estratificação
@@ -279,13 +278,69 @@ def preparar_modelos():
                 X, y, test_size=0.3, random_state=42, stratify=y
             )
         except ValueError as e:
+            print(f"\nErro ao dividir os dados para o modelo '{classe_alvo}' em '{contexto}': {e}")
             return None
 
-        # Modelo XGBoost
-        modelo = XGBClassifier(eval_metric='logloss')
+        # Calcular o scale_pos_weight para lidar com desbalanceamento
+        negative_count = (y_train == 0).sum()
+        positive_count = (y_train == 1).sum()
+        if positive_count == 0 or negative_count == 0:
+            print(f"\nAviso: Classe '{classe_alvo}' não possui amostras suficientes no conjunto de treinamento para o contexto '{contexto}'.")
+            return None
+        scale_pos_weight = negative_count / positive_count
+
+        # Definir os hiperparâmetros a serem ajustados
+        param_grid = {
+            'max_depth': [3, 5, 7],
+            'learning_rate': [0.01, 0.1],
+            'n_estimators': [100, 200],
+            'gamma': [0, 0.1],
+            'min_child_weight': [1, 5],
+            'subsample': [0.8, 1],
+            'colsample_bytree': [0.8, 1],
+            'scale_pos_weight': [scale_pos_weight],
+        }
+
+        # Inicializar o modelo
+        xgb_model = XGBClassifier(eval_metric='logloss')
+
+        # Configurar o GridSearchCV
+        grid_search = GridSearchCV(
+            estimator=xgb_model,
+            param_grid=param_grid,
+            scoring='f1',
+            cv=3,
+            n_jobs=-1,
+            verbose=1
+        )
+
+        # Treinar o modelo com busca de hiperparâmetros
+        grid_search.fit(X_train, y_train)
+
+        # Melhor combinação de hiperparâmetros
+        best_params = grid_search.best_params_
+        print(f"\nMelhores hiperparâmetros para o modelo '{classe_alvo}' em '{contexto}':")
+        print(best_params)
+
+        # Treinar o modelo final com os melhores hiperparâmetros
+        modelo = XGBClassifier(**best_params, eval_metric='logloss')
         modelo.fit(X_train, y_train)
 
-        # Obter as importâncias tradicionais
+        # Prever probabilidades e ajustar o threshold
+        y_proba = modelo.predict_proba(X_test)[:, 1]
+        precisions, recalls, thresholds = precision_recall_curve(y_test, y_proba)
+        f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-6)
+        best_threshold = thresholds[np.argmax(f1_scores)]
+        print(f"\nMelhor threshold para o modelo '{classe_alvo}' em '{contexto}': {best_threshold}")
+
+        # Aplicar o novo threshold
+        y_pred = (y_proba >= best_threshold).astype(int)
+
+        # Calcular métricas de desempenho
+        print(f"\nDesempenho do modelo '{classe_alvo}' em '{contexto}':")
+        print(classification_report(y_test, y_pred, zero_division=0))
+
+        # Obter as importâncias das variáveis
         importances = modelo.feature_importances_
         indices = np.argsort(importances)[::-1]
         top_vars = [X.columns[i] for i in indices if importances[i] > 0][:10]
@@ -379,28 +434,81 @@ def preparar_modelos():
                     contexto = f'Região {regiao} - Período {periodo}'
                     criar_modelo_binario(df_combination, 'detrator', contexto, modelos_dict)
                     criar_modelo_binario(df_combination, 'neutro', contexto, modelos_dict)
-
-    
     
     # Passo 30: Funções para salvar as tabelas de volumetria e correlação
     def gerar_tabelas_volumetria(df_final):
+
         os.makedirs('Resultados/Volumetria', exist_ok=True)
         caminho_excel = 'Resultados/Volumetria/Volumetria_Tabelas.xlsx'
+        
         with pd.ExcelWriter(caminho_excel) as writer:
+            # Volumetria Total
             volumetria_total = calcular_volumetria(df_final, ['safra'], "Volumetria por Safra - Base Total")
+            
+            # Calcular a soma total das colunas numéricas
+            soma_total = volumetria_total.select_dtypes(include=[np.number]).sum()
+            
+            # Adicionar a soma total como uma nova linha
+            soma_total_row = pd.DataFrame(soma_total).T
+            soma_total_row.index = ['Total']
+            volumetria_total = pd.concat([volumetria_total, soma_total_row])
+            
+            # Salvar no Excel
             volumetria_total.to_excel(writer, sheet_name='Base_Total_Safra')
+            
+            # Volumetria por Região
             if 'regiao' in df_final.columns:
                 for regiao in unique_regioes:
                     df_regiao = df_final[df_final['regiao'] == regiao]
                     volumetria_regiao = calcular_volumetria(df_regiao, ['safra'], f"Volumetria por Safra - Região {regiao}")
+                    
+                    # Calcular a soma total das colunas numéricas
+                    soma_total_regiao = volumetria_regiao.select_dtypes(include=[np.number]).sum()
+                    
+                    # Adicionar a soma total como uma nova linha
+                    soma_total_regiao_row = pd.DataFrame(soma_total_regiao).T
+                    soma_total_regiao_row.index = ['Total']
+                    volumetria_regiao = pd.concat([volumetria_regiao, soma_total_regiao_row])
+                    
+                    # Limitar o nome da aba a 31 caracteres
                     sheet_name = f"Regiao_{regiao}"[:31]
                     volumetria_regiao.to_excel(writer, sheet_name=sheet_name)
+            
+            # Volumetria por Período de Pesquisa
             if 'periodo_de_pesquisa' in df_final.columns:
                 for periodo in unique_periodos:
                     df_periodo = df_final[df_final['periodo_de_pesquisa'] == periodo]
                     volumetria_periodo = calcular_volumetria(df_periodo, ['safra'], f"Volumetria por Safra - Período {periodo}")
+                    
+                    # Calcular a soma total das colunas numéricas
+                    soma_total_periodo = volumetria_periodo.select_dtypes(include=[np.number]).sum()
+                    
+                    # Adicionar a soma total como uma nova linha
+                    soma_total_periodo_row = pd.DataFrame(soma_total_periodo).T
+                    soma_total_periodo_row.index = ['Total']
+                    volumetria_periodo = pd.concat([volumetria_periodo, soma_total_periodo_row])
+                    
+                    # Limitar o nome da aba a 31 caracteres
                     sheet_name = f"Periodo_{periodo}"[:31]
                     volumetria_periodo.to_excel(writer, sheet_name=sheet_name)
+            
+            # Volumetria por Safra (Opcional, se desejar uma análise específica por safra)
+            if 'safra' in df_final.columns:
+                for safra in df_final['safra'].dropna().unique():
+                    df_safra = df_final[df_final['safra'] == safra]
+                    volumetria_safra = calcular_volumetria(df_safra, ['safra'], f"Volumetria por Safra - Safra {int(safra)}")
+                    
+                    # Calcular a soma total das colunas numéricas
+                    soma_total_safra = volumetria_safra.select_dtypes(include=[np.number]).sum()
+                    
+                    # Adicionar a soma total como uma nova linha
+                    soma_total_safra_row = pd.DataFrame(soma_total_safra).T
+                    soma_total_safra_row.index = ['Total']
+                    volumetria_safra = pd.concat([volumetria_safra, soma_total_safra_row])
+                    
+                    # Limitar o nome da aba a 31 caracteres
+                    sheet_name = f"Vol_Safra_{int(safra)}"[:31]
+                    volumetria_safra.to_excel(writer, sheet_name=sheet_name)
 
     def gerar_tabelas_correlacao(df_final):
         os.makedirs('Resultados/Correlacao', exist_ok=True)
